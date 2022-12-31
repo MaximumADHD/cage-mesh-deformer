@@ -1,0 +1,27 @@
+{
+    "name": "Cage Mesh Deformer",
+
+    "tree": {
+        "$className": "DataModel",
+        "$ignoreUnknownInstances": true,
+
+        "ReplicatedStorage": {
+            "$className": "ReplicatedStorage",
+            "$ignoreUnknownInstances": true,
+
+            "Modules": {
+                "$path": "Modules"
+            },
+
+            "Packages": {
+                "$path": "Packages"
+            }
+        },
+
+        "ServerScriptService": {
+            "$className": "ServerScriptService",
+            "$ignoreUnknownInstances": true,
+            "$path": "Scripts"
+        }
+    }
+}

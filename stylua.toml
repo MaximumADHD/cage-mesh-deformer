@@ -1,0 +1,6 @@
+indent_type = "Tabs"
+indent_width = 4
+quote_style = "ForceDouble"
+column_width = 256
+call_parentheses = "Always"
+collapse_simple_statement = "Never"

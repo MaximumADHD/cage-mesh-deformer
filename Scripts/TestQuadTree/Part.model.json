@@ -1,0 +1,15 @@
+{
+    "className": "Part",
+
+    "properties": {
+        "TopSurface": "Smooth",
+        "BottomSurface": "Smooth",
+
+        "Anchored": true,
+        "CanCollide": false,
+        "CanQuery": false,
+        "CanTouch": false,
+
+        "Size": [ 1, 1, 1 ]
+    }
+}
