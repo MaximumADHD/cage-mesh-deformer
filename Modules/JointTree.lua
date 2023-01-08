@@ -10,10 +10,10 @@ type Assembly = {
 }
 
 type SpanningTree = {
-	{
+	[number]: {
 		Joint: JointInstance,
 		Part: BasePart,
-	}
+	},
 }
 
 local function addJointEdge(joints: Joints, joint: JointInstance)

@@ -1,60 +1,91 @@
+--!strict
+
 local RbfCage = {}
 RbfCage.__index = RbfCage
 
 local Modules = script.Parent
 local Octree = require(Modules.Octree)
+local QuadTree = require(Modules.QuadTree)
 local RobloxMesh = require(Modules.RobloxMesh)
 
 type Octree = Octree.Class
+type QuadTree = QuadTree.Class
+
+type Vertex = RobloxMesh.Vertex
 type RobloxMesh = RobloxMesh.Class
 
 export type Class = typeof(setmetatable({} :: {
-	_rbf: Octree,
-	_verts: Octree,
+	Rbf: QuadTree,
+	Verts: Octree,
 
-	_innerCage: RobloxMesh,
-	_outerCage: RobloxMesh,
+	InnerCage: RobloxMesh,
+	OuterCage: RobloxMesh,
+
+	Links: {
+		[Vertex]: Vertex,
+	},
 }, RbfCage))
 
--- I hate this, but it's way more ergonomic to
--- just use one spatial tree implementation.
-
-local function toRbf(uv: Vector2): Vector3
-	return Vector3.new(uv.X, 0, uv.Y)
+local function hashUV(uv: Vector2)
+	local x = math.round(uv.X * 1e3) / 1e3
+	local y = math.round(uv.Y * 1e3) / 1e3
+	return math.round(x * 73856093 + y * 19351301)
 end
 
-function RbfCage.new(innerCage: RobloxMesh, outerCage: RobloxMesh)
-	local verts = Octree.new()
-	local rbf = Octree.new()
+function RbfCage.new(innerCage: RobloxMesh, outerCage: RobloxMesh): Class
+	local verts = Octree.new(10)
+	local rbf = QuadTree.new(0.1)
 
 	local innerVerts = innerCage.Verts
 	local outerVerts = outerCage.Verts
 
+	local uvMap = {} :: {
+		[number]: {
+			InnerVert: Vertex,
+			OuterVert: Vertex?,
+		},
+	}
+
 	for i, vert in innerVerts do
 		local pos = vert.Position
-		local uv = toRbf(vert.UV)
+		local uv = vert.UV
 
 		local link = {
 			InnerVert = vert,
 			OuterVert = nil,
 		}
 
-		verts:CreateNode(pos, link)
+		local hash = hashUV(uv)
+		uvMap[hash] = link
+
 		rbf:CreateNode(uv, link)
+		verts:CreateNode(pos, link)
 	end
 
-	for i, vert in outerVerts do
-		local uv = toRbf(vert.UV)
-		local links, dists = rbf:kNearestNeighborsSearch(uv, 1, 0.2)
+	local linkMap = {} :: {
+		[Vertex]: Vertex,
+	}
 
-		local link = unpack(links)
-		local dist = unpack(dists)
+	for i, outerVert in outerVerts do
+		local hash = hashUV(outerVert.UV)
+		local link = uvMap[hash]
 
-		if link and dist then
-			link.OuterVert = vert
-			print(i, link, dist)
+		if link then
+			local innerVert = link.InnerVert
+			linkMap[innerVert] = outerVert
+			link.OuterVert = outerVert
 		end
 	end
+
+	return setmetatable({
+		Rbf = rbf,
+		Verts = verts,
+
+		InnerCage = innerCage,
+		OuterCage = outerCage,
+
+		Links = linkMap,
+	}, RbfCage)
 end
 
 return RbfCage
