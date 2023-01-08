@@ -546,7 +546,7 @@ function RobloxMesh.new(bin: string): Class
 
 				-- stylua: ignore
 				-- TODO: This CFrame calculation is wrong!
-				
+
 				local cf = CFrame.Angles(rotX, rotY, rotZ)
 				         + Vector3.new(posX, posY, posZ)
 

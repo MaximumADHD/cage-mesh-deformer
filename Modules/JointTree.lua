@@ -60,9 +60,9 @@ local function getRootPart(model: Model, tree: Joints): BasePart
 				local mass = part.Mass
 
                 -- stylua: ignore
-                local bestMass = if bestPart
-                    then bestPart.Mass
-                    else 0
+				local bestMass = if bestPart
+					then bestPart.Mass
+					else 0
 
 				if mass > bestMass then
 					bestPart = part

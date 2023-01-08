@@ -1,58 +1,62 @@
 --!strict
 
-local QuadTree = {}
-QuadTree.__index = QuadTree
+local Octree = {}
+Octree.__index = Octree
 
-local QuadTreeNode = {}
-QuadTreeNode.__index = QuadTreeNode
+local OctreeNode = {}
+OctreeNode.__index = OctreeNode
 
 type Set<T> = { [T]: true }
 
 type Region = {
 	subRegions: { Region },
-	lowerBounds: Vector2,
-	upperBounds: Vector2,
-	position: Vector2,
-	size: Vector2,
+	lowerBounds: Vector3,
+	upperBounds: Vector3,
+	position: Vector3,
+	size: Vector3,
 
 	parent: Region?,
 	parentIndex: number?,
 	depth: number,
 
-	nodes: Set<QuadTreeNode>,
+	nodes: Set<OctreeNode>,
 	nodeCount: number,
 }
 
 export type Class = typeof(setmetatable({} :: {
 	_maxDepth: number,
 	_nodeCount: number,
-	_maxRegionSize: Vector2,
+	_maxRegionSize: Vector3,
 	_regionHashMap: { { Region } },
-}, QuadTree))
+}, Octree))
 
-type QuadTreeNode = typeof(setmetatable({} :: {
+type OctreeNode = typeof(setmetatable({} :: {
 	_currentLowestRegion: Region?,
-	_position: Vector2,
+	_position: Vector3,
 
-	_quadtree: Class,
+	_octree: Class,
 	_object: any,
-}, QuadTreeNode))
+}, OctreeNode))
 
 local EPSILON = 1e-9
-local SQRT_2 = math.sqrt(2)
+local SQRT_3_OVER_2 = math.sqrt(3) / 2
 
 local SUB_REGION_POSITION_OFFSET = {
-	Vector2.new(0.25, -0.25),
-	Vector2.new(-0.25, -0.25),
-	Vector2.new(0.25, 0.25),
-	Vector2.new(-0.25, 0.25),
+	Vector3.new(0.25, 0.25, -0.25),
+	Vector3.new(-0.25, 0.25, -0.25),
+	Vector3.new(0.25, 0.25, 0.25),
+	Vector3.new(-0.25, 0.25, 0.25),
+	Vector3.new(0.25, -0.25, -0.25),
+	Vector3.new(-0.25, -0.25, -0.25),
+	Vector3.new(0.25, -0.25, 0.25),
+	Vector3.new(-0.25, -0.25, 0.25),
 }
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 -- Region Utils
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-local function createRegion(pos: Vector2, size: Vector2, parent: Region?, parentIndex: number?): Region
+local function createRegion(pos: Vector3, size: Vector3, parent: Region?, parentIndex: number?): Region
 	return {
 		subRegions = {},
 
@@ -72,7 +76,7 @@ local function createRegion(pos: Vector2, size: Vector2, parent: Region?, parent
 	}
 end
 
-local function addNode(lowestSubregion: Region?, node: QuadTreeNode)
+local function addNode(lowestSubregion: Region?, node: OctreeNode)
 	local current = lowestSubregion
 	assert(node, "Bad node")
 
@@ -86,7 +90,7 @@ local function addNode(lowestSubregion: Region?, node: QuadTreeNode)
 	end
 end
 
-local function moveNode(fromLowest: Region, toLowest: Region, node: QuadTreeNode)
+local function moveNode(fromLowest: Region, toLowest: Region, node: OctreeNode)
 	assert(fromLowest.depth == toLowest.depth, "fromLowest.depth ~= toLowest.depth")
 	assert(fromLowest ~= toLowest, "fromLowest == toLowest")
 
@@ -122,7 +126,7 @@ local function moveNode(fromLowest: Region, toLowest: Region, node: QuadTreeNode
 	end
 end
 
-local function removeNode(lowestSubregion: Region?, node: QuadTreeNode)
+local function removeNode(lowestSubregion: Region?, node: OctreeNode)
 	local current = lowestSubregion
 	assert(node, "Bad node")
 
@@ -146,12 +150,12 @@ local function removeNode(lowestSubregion: Region?, node: QuadTreeNode)
 end
 
 local function getSearchRadiusSquared(radius: number, diameter: number, epsilon: number): number
-	local diagonal = SQRT_2 * diameter
+	local diagonal = SQRT_3_OVER_2 * diameter
 	local searchRadius = radius + diagonal
 	return searchRadius * searchRadius + epsilon
 end
 
-local function getNeighborsWithinRadius(region: Region, radius: number, position: Vector2, objectsFound: { any }, nodeDistances2: { number }, maxDepth: number)
+local function getNeighborsWithinRadius(region: Region, radius: number, position: Vector3, objectsFound: { any }, nodeDistances2: { number }, maxDepth: number)
 	local radiusSquared = radius * radius
 	local childDiameter = region.size.X / 2
 	local searchRadiusSquared = getSearchRadiusSquared(radius, childDiameter, EPSILON)
@@ -181,10 +185,14 @@ local function getNeighborsWithinRadius(region: Region, radius: number, position
 	end
 end
 
-local function getSubRegionIndex(region: Region, pos: Vector2): number
+local function getSubRegionIndex(region: Region, pos: Vector3): number
 	local index = pos.X > region.position.X and 1 or 2
 
-	if pos.Y > region.position.Y then
+	if pos.Y <= region.position.Y then
+		index += 4
+	end
+
+	if pos.Z >= region.position.Z then
 		index += 2
 	end
 
@@ -202,7 +210,7 @@ local function createSubRegion(parentRegion: Region, parentIndex: number): Regio
 	return createRegion(p, s, parentRegion, parentIndex)
 end
 
-local function getOrCreateSubRegionAtDepth(region: Region, position: Vector2, maxDepth: number): Region
+local function getOrCreateSubRegionAtDepth(region: Region, position: Vector3, maxDepth: number): Region
 	local current = region
 
 	for _ = region.depth, maxDepth do
@@ -222,23 +230,36 @@ local function getOrCreateSubRegionAtDepth(region: Region, position: Vector2, ma
 	return current
 end
 
-local function inRegionBounds(region: Region, pos: Vector2): boolean
+local function inRegionBounds(region: Region, pos: Vector3): boolean
 	local lowerBounds = region.lowerBounds
 	local upperBounds = region.upperBounds
 
-	return (pos.X >= lowerBounds.X and pos.X <= upperBounds.X and pos.Y >= lowerBounds.Y and pos.Y <= upperBounds.Y)
+	-- stylua: ignore
+	return (
+		pos.X >= lowerBounds.X and
+		pos.X <= upperBounds.X and 
+		pos.Y >= lowerBounds.Y and 
+		pos.Y <= upperBounds.Y and
+		pos.Z >= lowerBounds.Z and
+		pos.Z <= upperBounds.Z
+	)
 end
 
-local function getTopLevelRegionHash(c: Vector2): number
+local function getTopLevelRegionHash(c: Vector3): number
 	-- Normally you would modulus this to hash table size, but we want as flat of a structure as possible
-	return c.X * 73856093 + c.Y * 19351301
+	return c.X * 73856093 + c.Y * 19351301 + c.Z * 83492791
 end
 
-local function getTopLevelRegionCellIndex(maxRegionSize: Vector2, pos: Vector2): Vector2
-	return Vector2.new(math.floor(pos.X / maxRegionSize.X + 0.5), math.floor(pos.Y / maxRegionSize.Y + 0.5))
+local function getTopLevelRegionCellIndex(maxRegionSize: Vector3, pos: Vector3): Vector3
+	-- stylua: ignore
+	return Vector3.new(
+		math.floor(pos.X / maxRegionSize.X + 0.5),
+		math.floor(pos.Y / maxRegionSize.Y + 0.5),
+		math.floor(pos.Z / maxRegionSize.Z + 0.5)
+	)
 end
 
-local function getOrCreateRegion(regionHashMap: { { Region } }, maxRegionSize: Vector2, pos: Vector2): Region
+local function getOrCreateRegion(regionHashMap: { { Region } }, maxRegionSize: Vector3, pos: Vector3): Region
 	local cell = getTopLevelRegionCellIndex(maxRegionSize, pos)
 	local hash = getTopLevelRegionHash(cell)
 	local regionList = regionHashMap[hash]
@@ -262,36 +283,36 @@ local function getOrCreateRegion(regionHashMap: { { Region } }, maxRegionSize: V
 	return region
 end
 
-local function getOrCreateLowestSubRegion(self: Class, pos: Vector2): Region
+local function getOrCreateLowestSubRegion(self: Class, pos: Vector3): Region
 	local region = getOrCreateRegion(self._regionHashMap, self._maxRegionSize, pos)
 	return getOrCreateSubRegionAtDepth(region, pos, self._maxDepth)
 end
 
-function QuadTreeNode.new(quadtree: Class, object: any): QuadTreeNode
+function OctreeNode.new(octree: Class, object: any): OctreeNode
 	return setmetatable({
-		_quadtree = assert(quadtree, "No quadtree"),
+		_octree = assert(octree, "No octree"),
 		_object = assert(object, "No object"),
-		_position = Vector2.zero,
-	}, QuadTreeNode)
+		_position = Vector3.zero,
+	}, OctreeNode)
 end
 
-function QuadTreeNode.kNearestNeighborsSearch(self: QuadTreeNode, k, radius)
-	return self._quadtree:kNearestNeighborsSearch(self._position, k, radius)
+function OctreeNode.kNearestNeighborsSearch(self: OctreeNode, k, radius)
+	return self._octree:kNearestNeighborsSearch(self._position, k, radius)
 end
 
-function QuadTreeNode.GetObject(self: QuadTreeNode): any
+function OctreeNode.GetObject(self: OctreeNode): any
 	return self._object
 end
 
-function QuadTreeNode.RadiusSearch(self: QuadTreeNode, radius: number)
-	return self._quadtree:RadiusSearch(self._position, radius)
+function OctreeNode.RadiusSearch(self: OctreeNode, radius: number)
+	return self._octree:RadiusSearch(self._position, radius)
 end
 
-function QuadTreeNode.GetPosition(self: QuadTreeNode)
+function OctreeNode.GetPosition(self: OctreeNode)
 	return self._position
 end
 
-function QuadTreeNode.SetPosition(self: QuadTreeNode, position: Vector2)
+function OctreeNode.SetPosition(self: OctreeNode, position: Vector3)
 	if self._position == position then
 		return
 	end
@@ -304,7 +325,7 @@ function QuadTreeNode.SetPosition(self: QuadTreeNode, position: Vector2)
 		end
 	end
 
-	local newLowestRegion = getOrCreateLowestSubRegion(self._quadtree, position)
+	local newLowestRegion = getOrCreateLowestSubRegion(self._octree, position)
 
 	if self._currentLowestRegion then
 		moveNode(self._currentLowestRegion, newLowestRegion, self)
@@ -315,18 +336,18 @@ function QuadTreeNode.SetPosition(self: QuadTreeNode, position: Vector2)
 	self._currentLowestRegion = newLowestRegion
 end
 
-function QuadTreeNode.Destroy(self: QuadTreeNode)
+function OctreeNode.Destroy(self: OctreeNode)
 	if self._currentLowestRegion then
 		removeNode(self._currentLowestRegion, self)
 	end
 
 	if self._object then
 		self._object = nil
-		self._quadtree._nodeCount -= 1
+		self._octree._nodeCount -= 1
 	end
 end
 
-function QuadTree.new(maxRegionSize: number?, maxDepth: number?): Class
+function Octree.new(maxRegionSize: number?, maxDepth: number?): Class
 	if maxRegionSize then
 		assert(maxRegionSize > 0)
 	end
@@ -336,15 +357,15 @@ function QuadTree.new(maxRegionSize: number?, maxDepth: number?): Class
 	end
 
 	return setmetatable({
-		_maxRegionSize = Vector2.one * (maxRegionSize or 64),
+		_maxRegionSize = Vector3.one * (maxRegionSize or 64),
 		_maxDepth = maxDepth or 4,
 
 		_regionHashMap = {},
 		_nodeCount = 0,
-	}, QuadTree)
+	}, Octree)
 end
 
-function QuadTree.IterNodes(self: Class): () -> QuadTreeNode
+function Octree.IterNodes(self: Class): () -> OctreeNode
 	return coroutine.wrap(function()
 		for _, regionList in self._regionHashMap do
 			for _, region in regionList do
@@ -356,17 +377,17 @@ function QuadTree.IterNodes(self: Class): () -> QuadTreeNode
 	end)
 end
 
-function QuadTree.CreateNode(self: Class, pos: Vector2, obj: any): QuadTreeNode
+function Octree.CreateNode(self: Class, pos: Vector3, obj: any): OctreeNode
 	local object = assert(obj, "Bad object value")
 	self._nodeCount += 1
 
-	local node = QuadTreeNode.new(self, object)
+	local node = OctreeNode.new(self, object)
 	node:SetPosition(pos)
 
 	return node
 end
 
-function QuadTree.RadiusSearch(self: Class, position: Vector2, radius: number): ({ any }, { number })
+function Octree.RadiusSearch(self: Class, position: Vector3, radius: number): ({ any }, { number })
 	local objectsFound = table.create(self._nodeCount)
 	local nodeDistances2 = table.create(self._nodeCount)
 
@@ -388,8 +409,8 @@ function QuadTree.RadiusSearch(self: Class, position: Vector2, radius: number): 
 	return objectsFound, nodeDistances2
 end
 
-function QuadTree.kNearestNeighborsSearch(self: Class, position: Vector2, k: number, radius: number): ({ any }, { number })
-	assert(typeof(position) == "Vector2", "Bad position")
+function Octree.kNearestNeighborsSearch(self: Class, position: Vector3, k: number, radius: number): ({ any }, { number })
+	assert(typeof(position) == "Vector3", "Bad position")
 	assert(type(radius) == "number", "Bad radius")
 
 	local objects, nodeDistances2 = self:RadiusSearch(position, radius)
@@ -418,4 +439,4 @@ function QuadTree.kNearestNeighborsSearch(self: Class, position: Vector2, k: num
 	return knearest, knearestDist2
 end
 
-return QuadTree
+return Octree

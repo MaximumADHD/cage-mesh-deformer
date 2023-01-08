@@ -62,7 +62,7 @@ function CageBuilder.BuildSnapshot(self: Class): RobloxMesh
 
 	for part, offset in assembly do
 		local target = part:FindFirstChildOfClass("WrapTarget")
-		
+
 		-- stylua: ignore
 		local mesh = if target
 			then self._targets[target]
@@ -76,7 +76,7 @@ function CageBuilder.BuildSnapshot(self: Class): RobloxMesh
 			end
 
 			mesh = mesh:Transform(offset, scale)
-			cage:Append(mesh)
+			cage = cage:Append(mesh)
 		end
 	end
 
