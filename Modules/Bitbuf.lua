@@ -6,12 +6,6 @@
 
 local Bitbuf = {}
 
-type Bitbuf = {
-	buf: { number },
-	len: number,
-	i: number,
-}
-
 -------------------------------------------------------------------------------------
 -- Internal utility functions.
 -------------------------------------------------------------------------------------
@@ -62,7 +56,11 @@ end
 local Buffer = {}
 Buffer.__index = Buffer
 
-export type Class = typeof(setmetatable({} :: Bitbuf, Buffer))
+export type Class = typeof(setmetatable({} :: {
+	buf: { number },
+	len: number,
+	i: number,
+}, Buffer))
 
 -------------------------------------------------------------------------------------
 -- Returns a new Buffer *size* bits in length, with the
