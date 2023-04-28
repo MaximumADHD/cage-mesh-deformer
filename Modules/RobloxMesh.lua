@@ -35,21 +35,19 @@ type Pose = {
 type Face = { number }
 type LOD = { Face }
 
-export type Class = typeof(setmetatable(
-	{} :: {
-		LODs: { LOD },
-		Bones: { Bone }?,
-		Verts: { Vertex },
+-- stylua: ignore
+export type Class = typeof(setmetatable({} :: {
+	LODs: { LOD },
+	Bones: { Bone }?,
+	Verts: { Vertex },
 
-		Morphs: {
-			[number]: {
-				Label: string,
-				Transforms: Pose,
-			},
-		}?,
-	},
-	RobloxMesh
-))
+	Morphs: {
+		[number]: {
+			Label: string,
+			Transforms: Pose,
+		},
+	}?,
+}, RobloxMesh))
 
 --------------------------------------------------------------------
 
