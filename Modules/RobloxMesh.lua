@@ -35,15 +35,21 @@ type Pose = {
 type Face = { number }
 type LOD = { Face }
 
-export type Class = typeof(setmetatable({} :: {
-	LODs: { LOD },
-	Bones: { Bone }?,
-	Verts: { Vertex },
+export type Class = typeof(setmetatable(
+	{} :: {
+		LODs: { LOD },
+		Bones: { Bone }?,
+		Verts: { Vertex },
 
-	Morphs: {
-		[string]: Pose,
-	}?,
-}, RobloxMesh))
+		Morphs: {
+			[number]: {
+				Label: string,
+				Transforms: Pose,
+			},
+		}?,
+	},
+	RobloxMesh
+))
 
 --------------------------------------------------------------------
 
@@ -74,14 +80,14 @@ end
 local function fromV1(file: string): Class
 	local readLine = file:gmatch("[^\r\n]+")
 
-	local header = readLine()
+	local header = assert(readLine())
 	assert(header:sub(1, 8) == "version ", "Not a mesh file")
 
 	local meshVersion = assert(tonumber(header:sub(9)), "Bad version header")
 	assert(meshVersion >= 1 and meshVersion < 2, "mesh version not supported: " .. meshVersion)
 
 	local numFaces = assert(tonumber(readLine()), "bad face count")
-	local readXYZ = string.gmatch(readLine(), "%[([^,]+),([^,]+),([^%]]+)%]")
+	local readXYZ = string.gmatch(assert(readLine()), "%[([^,]+),([^,]+),([^%]]+)%]")
 
 	local xs, ys, zs
 	local x, y, z
@@ -341,12 +347,12 @@ function RobloxMesh.new(bin: string): Class
 	end
 
 	if numLODs < 2 or lodOffsets[2] == 0 then
-		lodOffsets[1] = 0
-		lodOffsets[2] = numFaces
+		lodOffsets = { 0, numFaces }
 		numLODs = 2
 	end
 
 	-- Read Bones
+
 	for i = 1, numBones do
 		local bone = Instance.new("Bone")
 		local nameIndex = readInt32()
@@ -356,28 +362,21 @@ function RobloxMesh.new(bin: string): Class
 		local _culling = readFloat()
 
 		bone:SetAttribute("NameIndex", nameIndex)
+		bone.Parent = bones[parentId + 1]
 		bones[i] = bone
 
-		local v0 = readVector3()
-		local v1 = readVector3()
-		local v2 = readVector3()
-		local v3 = readVector3()
+		local m1 = readVector3()
+		local m2 = readVector3()
+		local m3 = readVector3()
+		local m0 = readVector3()
 
 		-- stylua: ignore
-		local cf = CFrame.new(
-			-- XYZ Position,
-			-- Args are row-ordered.
-			v3.X, v3.Y, v3.Z, 
-			
-			-- 3x3 Rotation Matrix, 
-			-- Args are column-ordered.
-			v0.X, v1.X, v2.X,
-			v0.Y, v1.Y, v2.Y,
-			v0.Z, v1.Z, v2.Z
+		bone.WorldCFrame = CFrame.new(
+			m0.X, m0.Y, m0.Z,
+			m1.X, m1.Y, m1.Z,
+			m2.X, m2.Y, m2.Z,
+			m3.X, m3.Y, m3.Z
 		)
-
-		bone.Parent = bones[parentId + 1]
-		bone.WorldCFrame = cf
 	end
 
 	-- Read Bone Names
@@ -494,90 +493,85 @@ function RobloxMesh.new(bin: string): Class
 		end
 
 		local transform = table.create(6)
-		local numPoses = #faceBoneNames + numTwoPoseCorrectives + numThreePoseCorrectives
 
 		for i = 1, 6 do
-			local _unitSize = readUInt16()
+			local format = readUInt16()
 			local rows = readUInt32()
 			local cols = readUInt32()
 
-			assert(rows == #faceBoneNames)
-
-			local min = readFloat()
-			local max = readFloat()
-
-			local matrix = table.create(cols)
+			local matrix = table.create(rows * cols)
 			transform[i] = matrix
 
-			for c = 1, cols do
-				local row = table.create(rows)
-
-				for r = 1, rows do
-					local alpha = readUInt16() / 65536
-					local value = min + (max - min) * alpha
-
-					table.insert(row, value)
+			if format == 1 then
+				for i = 1, rows * cols do
+					matrix[i] = readFloat()
 				end
+			elseif format == 2 then
+				local min = readFloat()
+				local max = readFloat()
 
-				table.insert(matrix, row)
+				local range = math.abs(max - min)
+				assert(range <= 65535)
+
+				local alpha = if range > 1e-4 then range / 65535 else 0
+
+				for i = 1, rows * cols do
+					local value = readUInt16()
+					matrix[i] = (value * alpha) + min
+				end
 			end
 		end
 
-		-- stylua: ignore
-		local posTblX, posTblY, posTblZ, 
-		      rotTblX, rotTblY, rotTblZ = unpack(transform)
-
-		local poses = table.create(numPoses)
-		local numFaceBones = #faceBoneNames
-
-		for i = 1, numPoses do
-			local pose = {}
-
-			for j = 1, numFaceBones do
-				local boneName = faceBoneNames[j]
-
-				local posX = posTblX[i][j]
-				local posY = posTblY[i][j]
-				local posZ = posTblZ[i][j]
-
-				local rotX = rotTblX[i][j] * DEG2RAD
-				local rotY = rotTblY[i][j] * DEG2RAD
-				local rotZ = rotTblZ[i][j] * DEG2RAD
-
-				-- stylua: ignore
-				-- TODO: This CFrame calculation is wrong!
-
-				local cf = CFrame.Angles(rotX, rotY, rotZ)
-				         + Vector3.new(posX, posY, posZ)
-
-				pose[boneName] = cf
-			end
-
-			table.insert(poses, pose)
-		end
-
+		local numPoses = #faceControlNames + numTwoPoseCorrectives + numThreePoseCorrectives
 		local poseNames = table.clone(faceControlNames)
-		local threePose = "%s + %s + %s"
+		local poses = table.create(numPoses)
 
 		for i = 1, numTwoPoseCorrectives do
 			local poseA = faceControlNames[1 + readUInt16()]
 			local poseB = faceControlNames[1 + readUInt16()]
-
-			local pose = poseA .. " + " .. poseB
-			table.insert(poseNames, pose)
+			table.insert(poseNames, `{poseA} + {poseB}`)
 		end
 
 		for i = 1, numThreePoseCorrectives do
 			local poseA = faceControlNames[1 + readUInt16()]
 			local poseB = faceControlNames[1 + readUInt16()]
 			local poseC = faceControlNames[1 + readUInt16()]
+			table.insert(poseNames, `{poseA} + {poseB} + {poseC}`)
+		end
 
-			local pose = threePose:format(poseA, poseB, poseC)
-			table.insert(poseNames, pose)
+		-- stylua: ignore
+		local posTblX, posTblY, posTblZ, 
+		      rotTblX, rotTblY, rotTblZ = unpack(transform)
+
+		for row, boneName in faceBoneNames do
+			local begin = ((row - 1) * numPoses)
+
+			for col = 1, numPoses do
+				local pose = poses[col] or {}
+				local i = begin + col
+
+				if begin == 0 then
+					poses[col] = pose
+				end
+
+				local posX = posTblX[i]
+				local posY = posTblY[i]
+				local posZ = posTblZ[i]
+
+				local rotX = rotTblX[i] * DEG2RAD
+				local rotY = rotTblY[i] * DEG2RAD
+				local rotZ = rotTblZ[i] * DEG2RAD
+
+				local rot = CFrame.Angles(rotX, rotY, rotZ)
+				pose[boneName] = rot * CFrame.new(posX, posY, posZ)
+			end
 		end
 
 		for i, name in poseNames do
-			morphs[name] = poses[i]
+			table.insert(morphs, {
+				Label = name,
+				Transforms = poses[i],
+			})
 		end
 	end
 
