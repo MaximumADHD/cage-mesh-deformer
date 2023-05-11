@@ -7,12 +7,18 @@ local Modules = script.Parent
 local Octree = require(Modules.Octree)
 local QuadTree = require(Modules.QuadTree)
 local RobloxMesh = require(Modules.RobloxMesh)
+local CageBuilder = require(Modules.CageBuilder)
 
 type Octree = Octree.Class
 type QuadTree = QuadTree.Class
-
 type Vertex = RobloxMesh.Vertex
 type RobloxMesh = RobloxMesh.Class
+type CageBuilder = CageBuilder.Class
+
+type Link = {
+	InnerVert: Vertex,
+	OuterVert: Vertex,
+}
 
 export type Class = typeof(setmetatable({} :: {
 	Rbf: QuadTree,
@@ -34,7 +40,7 @@ end
 
 function RbfCage.new(innerCage: RobloxMesh, outerCage: RobloxMesh): Class
 	local verts = Octree.new(10)
-	local rbf = QuadTree.new(0.1)
+	local rbf = QuadTree.new(0.2)
 
 	local innerVerts = innerCage.Verts
 	local outerVerts = outerCage.Verts
@@ -86,6 +92,35 @@ function RbfCage.new(innerCage: RobloxMesh, outerCage: RobloxMesh): Class
 
 		Links = linkMap,
 	}, RbfCage)
+end
+
+-- Creates a new RbfCage, morphing the outer layer of
+-- this RbfCage onto the provided inner target cage.
+
+function RbfCage.Retarget(self: Class, innerTarget: RobloxMesh): Class
+	local outerTarget = innerTarget:Clone()
+	local rbf = self.Rbf
+
+	for i, innerVert in innerTarget.Verts do
+		local layer: Link? = rbf:kNearestNeighborsSearch(innerVert.UV, 1, 0.1)[1]
+		local innerPos = innerVert.Position
+
+		if layer then
+			local inner = layer.InnerVert
+			local outer = layer.OuterVert
+
+			if inner and outer then
+				local refPos = inner.Position
+				local cagePos = outer.Position
+				local offset = cagePos - refPos
+
+				local outerVert = outerTarget.Verts[i]
+				outerVert.Position += offset
+			end
+		end
+	end
+
+	return RbfCage.new(innerTarget, outerTarget)
 end
 
 return RbfCage

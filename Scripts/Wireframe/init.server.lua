@@ -1,40 +1,41 @@
 --!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RobloxMesh = require(ReplicatedStorage.Modules.RobloxMesh)
+local Modules = ReplicatedStorage.Modules
 
+local RbfCage = require(Modules.RbfCage)
+local RobloxMesh = require(Modules.RobloxMesh)
+local CageBuilder = require(Modules.CageBuilder)
+
+type RbfCage = RbfCage.Class
 type CageMesh = "Reference" | "Cage"
+
 type RobloxMesh = RobloxMesh.Class
+type CageBuilder = CageBuilder.Class
 
-local function createWireframe(part: MeshPart, cage: CageMesh?): WireframeHandleAdornment
+local cageBuilders = {} :: {
+	[Model]: CageBuilder,
+}
+
+local function createWireframe(part: MeshPart, cage: BaseWrap?): WireframeHandleAdornment
+	warn("CreateWireframe", part, cage)
+
 	-- stylua: ignore
-	local baseWrap = if cage
-		then part:FindFirstChildWhichIsA("BaseWrap")
-		else nil
-
 	local color = Color3.new(0, 1, 1)
 	local transparency = 0
 
 	local meshId = part.MeshId
-	local offset: CFrame? = nil
+	local offset = CFrame.identity
+	local target = part:FindFirstChildWhichIsA("BaseWrap")
 
-	if baseWrap then
-		if baseWrap:IsA("WrapTarget") or cage == "Reference" then
-			color = Color3.new(0, 1, 0)
-		else
-			color = Color3.new(1, 0, 1)
-		end
-
-		if cage == "Reference" and baseWrap:IsA("WrapLayer") then
-			offset = baseWrap.ReferenceOrigin
-			meshId = baseWrap.ReferenceMeshId
-		elseif cage == "Cage" then
-			offset = baseWrap.CageOrigin
-			meshId = baseWrap.CageMeshId
-		end
-	end
-
-	if part:FindFirstChildWhichIsA("BaseWrap") and not cage then
-		transparency = 0.8
+	if cage and cage:IsA("WrapLayer") then
+		meshId = cage.ReferenceMeshId
+		offset = cage.ReferenceOrigin
+		color = Color3.new(0, 0, 1)
+	elseif target then
+		meshId = target.CageMeshId
+		offset = target.CageOrigin
+		color = Color3.new(1, 0, 0)
+		createWireframe(part, target)
 	end
 
 	local wireframe = Instance.new("WireframeHandleAdornment")
@@ -54,7 +55,43 @@ local function createWireframe(part: MeshPart, cage: CageMesh?): WireframeHandle
 		local scale = part.Size / part.MeshSize
 		mesh = mesh:Transform(offset, scale)
 
-		local bones = mesh.Bones
+		if target then
+			local cageBuilder: CageBuilder? = nil
+			local rootPart = part.AssemblyRootPart or part
+
+			if rootPart then
+				local model = rootPart.Parent
+
+				if model and model:IsA("Model") then
+					local builder = cageBuilders[model]
+
+					if not builder then
+						builder = CageBuilder.new(model)
+						cageBuilders[model] = builder
+					end
+
+					cageBuilder = builder
+				end
+			end
+
+			if cageBuilder and target:IsA("WrapLayer") then
+				local refMesh = RobloxMesh.fromAsset(target.ReferenceMeshId)
+				refMesh = refMesh:Transform(target.ReferenceOrigin)
+
+				-- Create morph for this layer.
+				local rbf = RbfCage.new(refMesh, mesh)
+
+				-- Create snapshot of the target's inner cage.
+				local newRefMesh = cageBuilder:BuildSnapshot()
+
+				-- Morph the reference to the target cage.
+				local newRbf = rbf:Retarget(newRefMesh)
+
+				-- Render the morphed layer cage.
+				mesh = newRbf.OuterCage
+			end
+		end
+
 		local verts = mesh.Verts
 		local faces = mesh.LODs[1]
 
@@ -70,59 +107,35 @@ local function createWireframe(part: MeshPart, cage: CageMesh?): WireframeHandle
 			wireframe:AddLine(pointB, pointC)
 			wireframe:AddLine(pointC, pointA)
 		end
-
-		--[[
-		for i, vert in verts do
-			local pos = vert.Position
-			local normal = vert.Normal
-			local tangent = vert.Tangent
-
-			wireframe.Color3 = B
-			wireframe:AddLine(pos, pos + (normal / 30))
-
-			if tangent then
-				local up = tangent.Vector
-				local right = normal:Cross(up) * tangent.Sign
-
-				wireframe.Color3 = G
-				wireframe:AddLine(pos, pos + (up / 30))
-
-				wireframe.Color3 = R
-				wireframe:AddLine(pos, pos + (right / 30))
-			end
-		end
-		]]
-		--
-
-		wireframe.Color3 = Color3.new(1, 0, 1)
-
-		if bones then
-			for i, bone in bones do
-				local parent = bone.Parent
-
-				if parent and parent:IsA("Attachment") then
-					wireframe:AddLine(parent.WorldPosition, bone.WorldPosition)
-				end
-			end
-		end
 	end
 
 	return wireframe
 end
 
 local function onDescendantAdded(part: Instance)
-	if not part:IsA("MeshPart") then
-		return
+	if part:IsA("MeshPart") then
+		local wrapLayer: WrapLayer? = part:FindFirstChildOfClass("WrapLayer")
+
+		if wrapLayer then
+			local inner = RobloxMesh.fromAsset(wrapLayer.ReferenceMeshId)
+			inner = inner:Transform(wrapLayer.ReferenceOrigin)
+
+			local outer = RobloxMesh.fromAsset(wrapLayer.CageMeshId)
+			outer = outer:Transform(wrapLayer.CageOrigin)
+
+			local wireframe = createWireframe(part)
+			wireframe.Color3 = Color3.new(1, 1, 0)
+
+			local rbf = RbfCage.new(inner, outer)
+			part.Transparency = 0.9
+
+			for innerVert, outerVert in rbf.Links do
+				wireframe:AddLine(innerVert.Position, outerVert.Position)
+			end
+		else
+			--part.LocalTransparencyModifier = 0.9
+		end
 	end
-
-	-- Make Luau happy.
-	assert(part:IsA("MeshPart"))
-
-	if part:FindFirstChildOfClass("WrapLayer") then
-		createWireframe(part, "Reference")
-	end
-
-	createWireframe(part, "Cage")
 end
 
 workspace.DescendantAdded:Connect(onDescendantAdded)
