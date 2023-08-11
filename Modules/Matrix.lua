@@ -156,7 +156,7 @@ function Matrix.Inverse(self: Class): Class?
             return nil
         end
 
-		 -- The pivot is now at [row, col]
+        -- The pivot is now at [row, col]
         rowIndex[c] = row
         colIndex[c] = col
 		
