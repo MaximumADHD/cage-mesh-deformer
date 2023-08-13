@@ -211,7 +211,7 @@ function Matrix.DecomposeLU(self: Class): (Class, Class)
     
     for i = 1, size do
         for j = 1, size do
-            if (j < i) then
+            if j < i then
                 l[j][i] = 0
             else
                 l[j][i] = self[j][i]
