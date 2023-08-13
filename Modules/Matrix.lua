@@ -121,8 +121,8 @@ function Matrix.Inverse(self: Class): Class?
 
         for r = 1, size do
             if pivot[r] == 0 then
-				continue
-			end
+                continue
+            end
 			
             for k = 1, size do
                 if pivot[k] == NO_PIVOT then
