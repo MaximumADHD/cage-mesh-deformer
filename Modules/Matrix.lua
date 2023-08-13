@@ -201,4 +201,43 @@ function Matrix.Inverse(self: Class): Class?
     return inv
 end
 
+-- Splits the Matrix diagonally in two, such that the product of the two matrices is the original.
+-- https://www.tutorialspoint.com/cplusplus-program-to-perform-lu-decomposition-of-any-matrix
+
+function Matrix.DecomposeLU(self) --(self: Class): (Class, Class)
+    local size = self.Size
+    local l = Matrix.identity(size)
+    local u = Matrix.identity(size)
+    
+    for i = 1, size do
+        for j = 1, size do
+            if (j < i) then
+                l[j][i] = 0
+            else
+                l[j][i] = self[j][i]
+                    
+                for k = 1, i - 1 do
+                    l[j][i] -= (l[j][k] * u[k][i])
+                end
+            end
+        end
+        
+        for j = 1, size do
+            if j < i then
+                u[i][j] = 0
+            elseif j == i then
+                u[i][j] = 1
+            else
+                u[i][j] = self[i][j] / l[i][i]
+                
+                for k = 1, i - 1 do
+                    u[i][j] -= ((l[i][k] * u[k][j]) / l[i][i])
+                end
+            end
+        end
+    end
+    
+    return l, u
+end
+
 return Matrix
