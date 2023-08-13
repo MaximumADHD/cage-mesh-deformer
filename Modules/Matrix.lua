@@ -204,7 +204,7 @@ end
 -- Splits the Matrix diagonally in two, such that the product of the two matrices is the original.
 -- https://www.tutorialspoint.com/cplusplus-program-to-perform-lu-decomposition-of-any-matrix
 
-function Matrix.DecomposeLU(self) --(self: Class): (Class, Class)
+function Matrix.DecomposeLU(self: Class): (Class, Class)
     local size = self.Size
     local l = Matrix.identity(size)
     local u = Matrix.identity(size)
