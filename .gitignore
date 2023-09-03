@@ -1,2 +1,5 @@
 Packages
 sourcemap.json
+*/bin/*
+*/obj/*
+.vs/*

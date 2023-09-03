@@ -2,6 +2,8 @@
 -- Bitbuf implements a bit-level buffer, suitable for
 -- serialization and storing data in-memory.
 -------------------------------------------------------------------------------------
+
+--!native
 --!strict
 
 local Bitbuf = {}
@@ -70,7 +72,7 @@ export type Class = typeof(setmetatable({} :: {
 function Bitbuf.new(size: number?): Class
 	size = size or 0
 	assert(size)
-	
+
 	return setmetatable({
 		buf = table.create(math.ceil(size / 32), 0),
 		len = size,
@@ -86,7 +88,7 @@ end
 function Bitbuf.fromString(s: string): Class
 	local n = math.ceil(#s / 4)
 
-	local self: Bitbuf = {
+	local self = {
 		buf = table.create(n, 0),
 		len = #s * 8,
 		i = 0,

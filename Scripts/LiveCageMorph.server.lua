@@ -2,7 +2,7 @@
 local TweenService = game:GetService("TweenService")
 local Modules = game.ReplicatedStorage.Modules
 
-local RbfCage = require(Modules.RbfCage)
+local CageSolver = require(Modules.CageSolver)
 local RobloxMesh = require(Modules.RobloxMesh)
 local CageBuilder = require(Modules.CageBuilder)
 
@@ -76,7 +76,7 @@ for i, face in activeMesh.LODs[1] do
 end
 
 local function switchMesh(newMesh: RobloxMesh)
-	local rbf = RbfCage.new(activeMesh, newMesh)
+	local rbf = CageSolver.new(activeMesh, newMesh)
 	local marked = {}
 
 	for inner, outer in rbf.Links do

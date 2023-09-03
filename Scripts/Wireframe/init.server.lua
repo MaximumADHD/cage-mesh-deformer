@@ -2,11 +2,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage.Modules
 
-local RbfCage = require(Modules.RbfCage)
+local CageSolver = require(Modules.CageSolver)
 local RobloxMesh = require(Modules.RobloxMesh)
 local CageBuilder = require(Modules.CageBuilder)
 
-type RbfCage = RbfCage.Class
+type CageSolver = CageSolver.Class
 type CageMesh = "Reference" | "Cage"
 
 type RobloxMesh = RobloxMesh.Class
@@ -79,16 +79,16 @@ local function createWireframe(part: MeshPart, cage: BaseWrap?): WireframeHandle
 				refMesh = refMesh:Transform(target.ReferenceOrigin)
 
 				-- Create morph for this layer.
-				local rbf = RbfCage.new(refMesh, mesh)
+				local solver = CageSolver.new(refMesh, mesh)
 
 				-- Create snapshot of the target's inner cage.
 				local newRefMesh = cageBuilder:BuildSnapshot()
 
 				-- Morph the reference to the target cage.
-				local newRbf = rbf:Retarget(newRefMesh)
+				local weights = solver:SolveRbf()
 
 				-- Render the morphed layer cage.
-				mesh = newRbf.OuterCage
+				print(weights)
 			end
 		end
 
@@ -126,7 +126,7 @@ local function onDescendantAdded(part: Instance)
 			local wireframe = createWireframe(part)
 			wireframe.Color3 = Color3.new(1, 1, 0)
 
-			local rbf = RbfCage.new(inner, outer)
+			local rbf = CageSolver.new(inner, outer)
 			part.Transparency = 0.9
 
 			for innerVert, outerVert in rbf.Links do
